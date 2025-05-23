@@ -1,0 +1,43 @@
+
+# Python 관련
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.env
+*.venv
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# 환경 변수 파일
+.env
+
+# IDE 관련
+.idea/
+.vscode/
+*.swp
+
+# 운영체제 관련
+.DS_Store
+Thumbs.db
+
+# 테스트 관련
+.coverage
+*.cover
+*.py,cover
+.tox/
+.nox/
+.cache/
+pytest_cache/
+htmlcov/
+
+# Docker 관련
+*.dockerignore
+docker-compose.override.yml
+
+# 기타
+*.bak
+*.tmp
