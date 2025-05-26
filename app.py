@@ -1,3 +1,9 @@
+from dotenv import load_dotenv
+import os
+
+# .env 파일 로드
+load_dotenv()
+
 from botocore.exceptions import NoCredentialsError, ClientError
 from flask import Flask, request, jsonify
 from PIL import Image, UnidentifiedImageError
@@ -168,7 +174,7 @@ def analyze_s3_images():
     print(f"memberId = {member_id} / retripId = {retrip_id}")
     print(f"bucket_name = {os.getenv('AWS_BUCKET_NAME')}")
     # S3 폴더 경로 생성
-    s3_folder_prefix = f"retrip/{member_id}/{retrip_id}/"
+    s3_folder_prefix = f"{member_id}/{retrip_id}/"
     bucket_name = os.getenv('AWS_BUCKET_NAME')
 
     if not bucket_name:
