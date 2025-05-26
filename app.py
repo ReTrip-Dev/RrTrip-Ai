@@ -159,19 +159,26 @@ def analyze_s3_images():
     # Spring Boot에서 직접 객체를 보내는 경우
     member_id = data.get('memberId')
     retrip_id = data.get('retripId')
+    main_location_lat = data.get('mainLocationLat')
+    main_location_lng = data.get('mainLocationLng')
 
     # 객체가 다른 필드에 감싸져 있을 경우 (request, body 등의 필드 확인)
     if not member_id and 'request' in data:
       member_id = data['request'].get('memberId')
       retrip_id = data['request'].get('retripId')
+      main_location_lat = data['request'].get('mainLocationLat')
+      main_location_lng = data['request'].get('mainLocationLng')
     elif not member_id and 'body' in data:
       member_id = data['body'].get('memberId')
       retrip_id = data['body'].get('retripId')
+      main_location_lat = data['body'].get('mainLocationLat')
+      main_location_lng = data['body'].get('mainLocationLng')
 
     if not member_id or not retrip_id:
       return jsonify({"error": "memberId와 retripId가 필요합니다."}), 400
 
     print(f"memberId = {member_id} / retripId = {retrip_id}")
+    print(f"main_location_lat = {main_location_lat} / main_location_lng = {main_location_lng}")
     print(f"bucket_name = {os.getenv('AWS_BUCKET_NAME')}")
     # S3 폴더 경로 생성
     s3_folder_prefix = f"{member_id}/{retrip_id}/"
@@ -181,7 +188,7 @@ def analyze_s3_images():
       return jsonify({"error": "AWS_BUCKET_NAME 환경 변수가 설정되지 않았습니다."}), 500
 
     print(
-      f"S3 버킷: {bucket_name}, 폴더/접두사: {s3_folder_prefix} 에서 이미지 목록을 가져오는 중...")
+        f"S3 버킷: {bucket_name}, 폴더/접두사: {s3_folder_prefix} 에서 이미지 목록을 가져오는 중...")
 
     try:
       # S3 버킷 내의 파일 목록 가져오기
@@ -237,16 +244,55 @@ def analyze_s3_images():
           "failed_images_info": failed_images_info
         }), 200
 
-      travel_analysis_prompt = """
-                당신은 여행 사진 분석 전문가입니다. 제공된 모든 여행 이미지들을 종합적으로 분석하여 다음 정보를 JSON 형식으로 제공해 주세요:
-                1. 전체적인 분위기 (overall_mood)
-                2. 가장 자주 등장하는 피사체 상위 5개 (top5_subjects)
-                3. 사진 카테고리 비율 (photo_category_ratio)
-            """
+
+      travel_analysis_prompt = f"""
+        당신은 여행 사진 분석 전문가입니다. 당신에게 제공된 **주어진 위도({main_location_lat})와 경도({main_location_lng}) 값은 이번 여행의 핵심 위치 정보입니다.** 
+        이 정보를 기반으로 모든 여행 이미지들을 종합적으로 분석하여 다음 세 가지 정보를 JSON 형식으로 제공해 주세요.
+      
+        1.  **overall_mood**: 이번 여행 사진의 전반적인 분위기를 한 문장으로 요약해 주세요.
+        2.  **top5_subjects**: 이번 여행 사진에서 가장 자주 등장하는 피사체 (인물, 동물, 특정 건물, 자연물 등) 상위 5개를 빈도 순으로 나열하고 각 항목의 대략적인 개수를 포함해 주세요.
+        3.  **photo_category_ratio**: 인물 사진, 풍경 사진, 음식 사진, 기타 사진의 대략적인 비율을 퍼센테이지로 제공해 주세요. (예: "인물: 30%, 풍경: 50%, 음식: 10%, 기타: 10%") 만약 특정 카테고리의 사진이 없거나 적다면 0%로 표시할 수 있습니다.
+        4.  **top_visit_place**: "제공된 위도 {main_location_lat}와 경도 {main_location_lng}가 가리키는 **정확한 장소**는 어디인가요? 이 위치가 속한 **가장 대표적인 지역명 또는 랜드마크 이름**을 한국어로 10단어 이내로 답변해주세요. 예를 들어, N서울타워 근처라면 '남산', 특정 가게 근처라도 그 가게가 속한 주요 상업 지구명이나 관광지명을 알려주세요. 도로명 주소는 제외합니다. **이 값은 제공된 위도/경도에 가장 부합하는 실제 지명이어야 합니다.**"
+                  (예: {{"latitude": {main_location_lat}, "longitude": {main_location_lng}, "place_name": "파주 임진각"}})
+                  {{
+                    "latitude": {main_location_lat},
+                    "longitude": {main_location_lng},
+                    "place_name": "해당 장소의 대표적인 지역명 또는 랜드마크 이름"
+                  }}
+        5.  **top_recommend_place**: **제공된 위도({main_location_lat})와 경도({main_location_lng})가 가리키는 지역을 기반으로**, 해당 지역 또는 근처에 있는 **방문할 만한 장소를 5개 추천**해 주세요. 
+                  이는 단순히 이미지에서 유추하는 것이 아니라, 해당 좌표가 속한 실제 지역의 유명 관광지, 맛집, 랜드마크 등을 고려해야 합니다.
+                  (예: ["파주 헤이리 마을", "임진각", "프로방스 마을", "파주 프리미엄 아울렛", "DMZ"])
+        6.  **mbti**: 이번 여행의 전반적인 분위기와 데이터를 토대로 사용자의 MBTI 유형을 추정해 주세요. (예: "ISFJ", "ENTP" 등)
+        7.  **person_mood**: 인물 사진이 있다면 인물의 감정 상태를 분석해 주세요. (예: "행복", "슬픔", "놀람" 등)
+      
+        다음 형식의 JSON으로 응답해 주세요:
+        {{
+          "travel_analysis": {{
+            "overall_mood": "이번 여행 사진의 전반적인 분위기는...",
+            "top5_subjects": [
+              {{"subject": "피사체1", "count": 10}},
+              {{"subject": "피사체2", "count": 8}},
+              {{"subject": "피사체3", "count": 5}},
+              {{"subject": "피사체4", "count": 3}},
+              {{"subject": "피사체5", "count": 2}}
+            ],
+            "photo_category_ratio": {{
+              "people": "30%",
+              "landscape": "50%",
+              "food": "10%",
+              "other": "10%"
+            }},
+            "top_visit_place": {{"latitude": {main_location_lat}, "longitude": {main_location_lng}, "place_name": "해당 장소의 대표적인 지역명 또는 랜드마크 이름"}},
+            "top_recommend_place": [ "추천 장소1", "추천 장소2", "추천 장소3", "추천 장소4", "추천 장소5" ],
+            "mbti": "ISFJ",
+            "person_mood": "행복"
+          }}
+        }}
+        """
 
       print("\n--- 전체 여행 이미지 분석 요청 시작 ---")
       combined_analysis_json_str = analyze_images_with_gpt4o(
-        processed_image_urls, travel_analysis_prompt)
+          processed_image_urls, travel_analysis_prompt)
 
       if combined_analysis_json_str:
         try:
